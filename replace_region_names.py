@@ -296,7 +296,7 @@ def main():
             command = ['-charset', 'filename=UTF8', '-overwrite_original', '-P']
             for _, (destination_tag, source_tag, changes) in changes_by_tag.items():
                 command.append(exiftool_substitution(destination_tag, source_tag, changes))
-            command.extend(['--', str(target)])
+            command.append(str(target))
             result = exiftool.run(command)
             updated = re.search(r'(?m)^\s*[1-9][0-9]*\s+image files updated\s*$', result.stdout)
             has_error = re.search(r'(?im)^\s*Error:', result.stderr + result.stdout)
@@ -334,10 +334,12 @@ def main():
                 batch = candidates[start:start + BATCH_SIZE]
                 query = exiftool.run(
                     ['-charset', 'filename=UTF8', '-json', '-G1', '-a',
-                     *[f'-{key}' for key, _, _ in METADATA_FIELDS], '--', *map(str, batch)]
+                     *[f'-{key}' for key, _, _ in METADATA_FIELDS], *map(str, batch)]
                 )
-                if query.stderr.strip():
-                    print(f'Warning from ExifTool: {query.stderr.strip()}', file=sys.stderr)
+                diagnostics = [line for line in query.stderr.splitlines()
+                               if line.lstrip().startswith(('Warning:', 'Error:'))]
+                if diagnostics:
+                    print('ExifTool: ' + '; '.join(diagnostics), file=sys.stderr)
                 try:
                     records = json.loads(query.stdout or '[]')
                 except json.JSONDecodeError as error:
