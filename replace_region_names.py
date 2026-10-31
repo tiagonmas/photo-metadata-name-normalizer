@@ -9,9 +9,19 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 BATCH_SIZE = 250
+SUPPORTED_EXTENSIONS = {
+    '.jpg', '.jpeg', '.jpe', '.png', '.tif', '.tiff', '.gif', '.bmp',
+    '.webp', '.heic', '.heif', '.avif', '.jxl', '.dng', '.raw', '.cr2',
+    '.cr3', '.nef', '.nrw', '.arw', '.srf', '.sr2', '.orf', '.rw2',
+    '.raf', '.pef', '.srw', '.3fr', '.iiq', '.erf', '.mef', '.mos',
+    '.mrw', '.rwl', '.x3f', '.fff', '.cap', '.ptx', '.pxn', '.jp2',
+    '.j2k', '.psd', '.psb', '.mov', '.mp4', '.m4v', '.3gp', '.avi',
+    '.mkv', '.xmp',
+}
 METADATA_FIELDS = [
     # JSON key, destination tag, source tag for ExifTool's per-list-item expression
     ('XMP-mwg-rs:RegionName', 'XMP-mwg-rs:RegionName', 'XMP-mwg-rs:RegionName'),
@@ -21,6 +31,79 @@ METADATA_FIELDS = [
     ('XMP-lr:WeightedFlatSubject', 'XMP-lr:WeightedFlatSubject', 'XMP-lr:WeightedFlatSubject'),
     ('XMP-digiKam:TagsList', 'XMP-digiKam:TagsList', 'XMP-digiKam:TagsList'),
 ]
+
+
+class ExifToolSession:
+    """Keep one ExifTool process alive for multiple commands."""
+
+    def __init__(self, executable):
+        self.executable = executable
+        self.stderr_file = tempfile.TemporaryFile(mode='w+b')
+        self.process = subprocess.Popen(
+            [executable, '-stay_open', 'True', '-@', '-'],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=self.stderr_file,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            bufsize=1,
+        )
+        self.sequence = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def run(self, arguments):
+        arguments = [str(argument) for argument in arguments]
+        # Newlines cannot be represented safely in ExifTool's line-based argfile.
+        if any('\n' in argument or '\r' in argument for argument in arguments):
+            return subprocess.run([self.executable, *arguments], capture_output=True, text=True)
+
+        self.sequence += 1
+        marker = f'{{ready{self.sequence}}}'
+        self.stderr_file.seek(0, 2)
+        stderr_start = self.stderr_file.tell()
+        try:
+            self.process.stdin.write('\n'.join(arguments) + f'\n-execute{self.sequence}\n')
+            self.process.stdin.flush()
+        except (BrokenPipeError, OSError) as error:
+            raise RuntimeError(f'Could not send a command to ExifTool: {error}') from error
+
+        output = []
+        while True:
+            line = self.process.stdout.readline()
+            if line == '':
+                raise RuntimeError('ExifTool exited before completing a command.')
+            if line.strip() == marker:
+                break
+            output.append(line)
+
+        self.stderr_file.flush()
+        self.stderr_file.seek(stderr_start)
+        errors = self.stderr_file.read().decode('utf-8', errors='replace')
+        self.stderr_file.seek(0)
+        self.stderr_file.truncate(0)
+        return subprocess.CompletedProcess(arguments, 0, ''.join(output), errors)
+
+    def close(self):
+        if self.process.poll() is None:
+            try:
+                self.process.stdin.write('-stay_open\nFalse\n')
+                self.process.stdin.flush()
+                self.process.stdin.close()
+                self.process.wait(timeout=10)
+            except (BrokenPipeError, OSError, subprocess.TimeoutExpired):
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait()
+        self.stderr_file.close()
 
 
 def load_mappings(csv_path):
@@ -47,10 +130,6 @@ def tag_values(metadata, key):
     if isinstance(value, list):
         return [item for item in value if isinstance(item, str)]
     return []
-
-
-def region_names(metadata):
-    return tag_values(metadata, 'XMP-mwg-rs:RegionName')
 
 
 def exiftool_substitution(destination_tag, source_tag, changes):
@@ -100,13 +179,13 @@ def main():
     parser.add_argument('--dry-run', '--dryrun', action='store_true', dest='dry_run',
                         help='report planned changes without writing files')
     parser.add_argument('--top', type=int, metavar='N',
-                        help='stop after N matching photos (include mapped XMP sidecars; --list counts RegionName files)')
+                        help='stop after N matching photos (include mapped XMP sidecars; --list counts files with listed metadata)')
     parser.add_argument('--copy', action='store_true',
                         help='write changed files as NAME.regionname.EXT and keep originals')
     parser.add_argument('--view', choices=('true', 'false'), default='false',
                         help='show per-tag change details after each file (default: false)')
     parser.add_argument('--list', action='store_true', dest='list_names',
-                        help='list RegionName values without changing any files')
+                        help='list values for every supported metadata field without changing files')
     parser.add_argument('--csv', type=Path, default=script_folder / 'people3.txt',
                         help='mapping CSV (default: people3.txt beside this script)')
     args = parser.parse_args()
@@ -135,7 +214,8 @@ def main():
         candidates = []
         for filename in filenames:
             path = Path(directory) / filename
-            if (path.is_file() and path.resolve() not in {mapping_file, script_file}
+            if (path.suffix.casefold() in SUPPORTED_EXTENSIONS and path.is_file()
+                    and path.resolve() not in {mapping_file, script_file}
                     and '.regionname.' not in path.name.casefold()):
                 candidates.append(path)
         return sorted(candidates)
@@ -212,13 +292,16 @@ def main():
                 except OSError as error:
                     print(f'Could not copy {source}: {error}', file=sys.stderr)
                     continue
-            command = ['exiftool', '-overwrite_original', '-P']
+            command = ['-charset', 'filename=UTF8', '-overwrite_original', '-P']
             for _, (destination_tag, source_tag, changes) in changes_by_tag.items():
                 command.append(exiftool_substitution(destination_tag, source_tag, changes))
             command.extend(['--', str(target)])
-            result = subprocess.run(command, capture_output=True, text=True)
-            if result.returncode != 0:
-                print(f'ExifTool failed for {target}: {result.stderr.strip() or result.stdout.strip()}', file=sys.stderr)
+            result = exiftool.run(command)
+            updated = re.search(r'(?m)^\s*[1-9][0-9]*\s+image files updated\s*$', result.stdout)
+            has_error = re.search(r'(?im)^\s*Error:', result.stderr + result.stdout)
+            if result.returncode != 0 or has_error or not updated:
+                detail = result.stderr.strip() or result.stdout.strip() or 'ExifTool did not report an updated file.'
+                print(f'ExifTool failed for {target}: {detail}', file=sys.stderr)
                 if args.copy:
                     target.unlink(missing_ok=True)
                 continue
@@ -230,82 +313,86 @@ def main():
                         print(f'  {json_key}: {old!r} -> {new!r}')
         return changed
 
-    scanned = 0
-    listed_count = 0
-    matching_files = 0
-    changed_files = 0
-    folders_done = 0
-    photos_left = args.top
-    if total_files == 0:
-        show_progress('Scanning metadata', 0, 0)
-    for directory, subdirectories, filenames in os.walk(folder):
-        subdirectories.sort()
-        candidates = files_in(directory, filenames)
-        if not candidates:
-            continue
-        folder_planned = []
-        stop_listing = False
-        for start in range(0, len(candidates), BATCH_SIZE):
-            batch = candidates[start:start + BATCH_SIZE]
-            query = subprocess.run(
-                ['exiftool', '-json', '-G1', '-a',
-                 *[f'-{key}' for key, _, _ in METADATA_FIELDS], '--', *map(str, batch)],
-                capture_output=True, text=True,
-            )
-            if query.returncode not in (0, 1):
-                print(f'Warning: ExifTool query returned {query.returncode}: {query.stderr.strip()}', file=sys.stderr)
-            try:
-                records = json.loads(query.stdout or '[]')
-            except json.JSONDecodeError as error:
-                print(f'Error parsing ExifTool output: {error}\n{query.stderr}', file=sys.stderr)
-                return 2
-            records.sort(key=lambda record: record.get('SourceFile', ''))
-            for record in records:
-                source = Path(record.get('SourceFile', ''))
-                if args.list_names:
-                    values = region_names(record)
-                    if values:
-                        print(f'{source}: {", ".join(values)}')
-                        listed_count += 1
-                        if args.top is not None and listed_count >= args.top:
-                            stop_listing = True
-                            break
-                    continue
-                changes_by_tag = {}
-                for json_key, destination_tag, source_tag in METADATA_FIELDS:
-                    field_values = tag_values(record, json_key)
-                    changes = [(old, new) for old, new in mappings
-                               if any(old in value for value in field_values)]
-                    if changes:
-                        changes_by_tag[json_key] = (destination_tag, source_tag, changes)
-                if changes_by_tag:
-                    folder_planned.append((source, changes_by_tag))
-            scanned += len(batch)
-            show_progress('Scanning metadata', scanned, total_files)
-            if stop_listing:
+    with ExifToolSession(shutil.which('exiftool')) as exiftool:
+        scanned = 0
+        listed_count = 0
+        matching_files = 0
+        changed_files = 0
+        folders_done = 0
+        photos_left = args.top
+        if total_files == 0:
+            show_progress('Scanning metadata', 0, 0)
+        for directory, subdirectories, filenames in os.walk(folder):
+            subdirectories.sort()
+            candidates = files_in(directory, filenames)
+            if not candidates:
+                continue
+            folder_planned = []
+            stop_listing = False
+            for start in range(0, len(candidates), BATCH_SIZE):
+                batch = candidates[start:start + BATCH_SIZE]
+                query = exiftool.run(
+                    ['-charset', 'filename=UTF8', '-json', '-G1', '-a',
+                     *[f'-{key}' for key, _, _ in METADATA_FIELDS], '--', *map(str, batch)]
+                )
+                if query.stderr.strip():
+                    print(f'Warning from ExifTool: {query.stderr.strip()}', file=sys.stderr)
+                try:
+                    records = json.loads(query.stdout or '[]')
+                except json.JSONDecodeError as error:
+                    print(f'Error parsing ExifTool output: {error}\n{query.stderr}', file=sys.stderr)
+                    return 2
+                records.sort(key=lambda record: record.get('SourceFile', ''))
+                for record in records:
+                    source = Path(record.get('SourceFile', ''))
+                    if args.list_names:
+                        listed_fields = [(json_key, tag_values(record, json_key))
+                                         for json_key, _, _ in METADATA_FIELDS]
+                        listed_fields = [(key, values) for key, values in listed_fields if values]
+                        if listed_fields:
+                            print(source)
+                            for key, values in listed_fields:
+                                print(f'  {key}: {", ".join(values)}')
+                            listed_count += 1
+                            if args.top is not None and listed_count >= args.top:
+                                stop_listing = True
+                                break
+                        continue
+                    changes_by_tag = {}
+                    for json_key, destination_tag, source_tag in METADATA_FIELDS:
+                        field_values = tag_values(record, json_key)
+                        changes = [(old, new) for old, new in mappings
+                                   if any(old in value for value in field_values)]
+                        if changes:
+                            changes_by_tag[json_key] = (destination_tag, source_tag, changes)
+                    if changes_by_tag:
+                        folder_planned.append((source, changes_by_tag))
+                scanned += len(batch)
+                show_progress('Scanning metadata', scanned, total_files)
+                if stop_listing:
+                    break
+
+            if args.list_names:
+                if stop_listing:
+                    break
+                continue
+
+            selected, photos_found = select_top(folder_planned, photos_left)
+            if photos_left is not None:
+                photos_left -= photos_found
+            matching_files += len(selected)
+            changed_files += apply_files(selected)
+            folders_done += 1
+            show_progress('Processing folders', folders_done, total_folders)
+            if photos_left is not None and photos_left <= 0:
                 break
 
         if args.list_names:
-            if stop_listing:
-                break
-            continue
-
-        selected, photos_found = select_top(folder_planned, photos_left)
-        if photos_left is not None:
-            photos_left -= photos_found
-        matching_files += len(selected)
-        changed_files += apply_files(selected)
-        folders_done += 1
-        show_progress('Processing folders', folders_done, total_folders)
-        if photos_left is not None and photos_left <= 0:
-            break
-
-    if args.list_names:
-        return 0
-    if args.dry_run:
-        print(f'Dry run complete: {matching_files} files would be changed.')
-    else:
-        print(f'Complete: changed {changed_files} of {matching_files} matching files.')
+            return 0
+        if args.dry_run:
+            print(f'Dry run complete: {matching_files} files would be changed.')
+        else:
+            print(f'Complete: changed {changed_files} of {matching_files} matching files.')
     return 0
 
 if __name__ == '__main__':

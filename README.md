@@ -61,7 +61,7 @@ Create renamed copies and leave originals in place:
 ./replace_region_names.py --folder "/path/to/photos" --copy
 ```
 
-List current `RegionName` values without changing files:
+List every supported metadata field and its values without changing files:
 
 ```sh
 ./replace_region_names.py --folder "/path/to/photos" --list
@@ -81,12 +81,12 @@ Use another mapping file:
 | `--dry-run` / `--dryrun` | Print planned tag changes without modifying files. |
 | `--copy` | Write changed files as `NAME.regionname.EXT`, preserving originals. Existing output files are skipped. |
 | `--top N` | Limit processing to the first N matching photos. A matching image and its mapped XMP sidecar are handled together. With `--list`, limits the number of files listed. |
-| `--list` | Print `RegionName` values only; no mappings are applied. |
+| `--list` | Print values for all supported metadata fields; no mappings are applied. |
 | `--csv PATH` | Mapping CSV path. Defaults to `people3.txt` beside the script. |
 | `--view true\|false` | Show per-tag old/new values after a successful change. Defaults to `false`; the changed file path is still printed. |
 | `-h`, `--help` | Show command help. |
 
-A progress display reports metadata scanning and folder processing. The script counts files first, then reads metadata in batches of 250 and handles one subfolder at a time to limit memory use. The current folder's matching changes are retained until that folder is processed.
+A progress display reports metadata scanning and folder processing. The script counts files first, then reads metadata in batches of 250 and handles one subfolder at a time to limit memory use. It only sends supported photo, video, raw-image, and `.xmp` sidecar files to ExifTool. The extension allowlist covers common JPEG, PNG, TIFF, HEIC, WebP, AVIF, camera RAW, and video formats; add an extension to `SUPPORTED_EXTENSIONS` in the script if your files use another format. One ExifTool process stays open for metadata reads and writes to reduce process startup overhead.
 
 ## Examples
 
