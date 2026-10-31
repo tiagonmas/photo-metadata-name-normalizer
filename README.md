@@ -73,6 +73,45 @@ Use another mapping file:
 ./replace_region_names.py --folder "/path/to/photos" --mappings ./my-mappings.csv --dry-run
 ```
 
+## Recommended test workflow
+
+Try the mapping on a small folder first. The commands below limit the copy run to 10 matching photos; a matching XMP sidecar is included with its photo.
+
+1. List the current metadata values so you can review what the files contain:
+
+   ```sh
+   ./replace_region_names.py --folder "/path/to/test-photos" --list --top 10
+   ```
+
+2. Create changed copies and print the old and new values. The originals remain unchanged:
+
+   ```sh
+   ./replace_region_names.py --folder "/path/to/test-photos" --mappings ./people3.txt --copy --top 10 --view true
+   ```
+
+3. Change to the test photo folder, then compare an original image with its `.regionname` copy:
+
+   ```sh
+   cd "/path/to/test-photos"
+   exiftool "photo.jpg" -diff "photo.regionname.jpg" --system:all -e
+   ```
+
+   For a JPEG XMP sidecar, compare the sidecar files too:
+
+   ```sh
+   exiftool "photo.jpg.xmp" -diff "photo.regionname.jpg.xmp" --system:all -e
+   ```
+
+   ExifTool prints the metadata differences between the pair. Review that the intended name fields changed as expected.
+
+4. When the copied files look right, run without `--copy` to update originals. This asks for confirmation before writing:
+
+   ```sh
+   ./replace_region_names.py --folder "/path/to/photos" --mappings ./people3.txt --view true
+   ```
+
+   Existing `.regionname` outputs are skipped by `--copy`, so use a fresh test folder or remove old test copies before repeating the copy step.
+
 ## Arguments
 
 | Argument | Description |
