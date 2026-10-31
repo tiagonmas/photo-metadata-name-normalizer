@@ -1,4 +1,0 @@
-old_name,new_name
-Afonso.Abreu.Silva,Afonso Abreu Silva
-joana,Joana
-tiago,Tiago

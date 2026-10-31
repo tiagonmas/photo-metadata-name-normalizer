@@ -13,7 +13,7 @@ A Python command-line script for applying name mappings to photo metadata and XM
 Clone the repository, then create your personal mapping file from the sample:
 
 ```sh
-cp people3.example.txt people3.txt
+cp mappings.txt people3.txt
 $EDITOR people3.txt
 ```
 
@@ -25,9 +25,9 @@ The file is CSV. The first column is the exact old tag/name text to find; the se
 
 ```csv
 old_name,new_name
-Afonso.Abreu.Silva,Afonso Abreu Silva
-joana,Joana
-tiago,Tiago
+John.Smith,John Smith
+Jane.Doe,Jane Doe
+Michael.Brown,Michael Brown
 ```
 
 For each file, the script checks these metadata fields and applies every mapping whose old value occurs in a field:
