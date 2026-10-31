@@ -6,7 +6,7 @@ A Python command-line script for applying name mappings to photo metadata and XM
 
 - Python 3 (standard library only)
 - [ExifTool](https://exiftool.org/) available on `PATH`
-- A mapping file named `people3.txt` beside the script, or a different CSV supplied with `--csv`
+- A mapping file named `mappings.txt` beside the script, or a different CSV supplied with `--mappings`
 
 ## Setup
 
@@ -17,7 +17,7 @@ cp mappings.txt people3.txt
 $EDITOR people3.txt
 ```
 
-`people3.txt` is ignored by Git because it is intended to contain your own names and mappings. The sample is tracked and safe to edit or share.
+`people3.txt` is ignored by Git because it is intended to contain your own names and mappings. Pass it explicitly with `--mappings people3.txt`; when no mapping path is supplied, the script uses the tracked `mappings.txt` sample.
 
 ## Mapping file format
 
@@ -43,22 +43,22 @@ Matching is literal and case-sensitive. Keep mappings specific enough to avoid c
 
 ## Usage
 
-The `--folder` argument is required and is scanned recursively. First preview changes with `--dry-run`:
+The `--folder` argument is required and is scanned recursively. First preview changes with `--dry-run`. To use your private mappings file, pass `--mappings people3.txt`; omitting that option uses `mappings.txt`:
 
 ```sh
-./replace_region_names.py --folder "/path/to/photos" --dry-run
+./replace_region_names.py --folder "/path/to/photos" --mappings people3.txt --dry-run
 ```
 
 Apply the mappings to original files in place (the script asks for confirmation when no operation option is supplied):
 
 ```sh
-./replace_region_names.py --folder "/path/to/photos"
+./replace_region_names.py --folder "/path/to/photos" --mappings people3.txt
 ```
 
 Create renamed copies and leave originals in place:
 
 ```sh
-./replace_region_names.py --folder "/path/to/photos" --copy
+./replace_region_names.py --folder "/path/to/photos" --mappings people3.txt --copy
 ```
 
 List every supported metadata field and its values without changing files:
@@ -70,7 +70,7 @@ List every supported metadata field and its values without changing files:
 Use another mapping file:
 
 ```sh
-./replace_region_names.py --folder "/path/to/photos" --csv ./my-mappings.csv --dry-run
+./replace_region_names.py --folder "/path/to/photos" --mappings ./my-mappings.csv --dry-run
 ```
 
 ## Arguments
@@ -82,7 +82,7 @@ Use another mapping file:
 | `--copy` | Write changed files as `NAME.regionname.EXT`, preserving originals. Existing output files are skipped. |
 | `--top N` | Limit processing to the first N matching photos. A matching image and its mapped XMP sidecar are handled together. With `--list`, limits the number of files listed. |
 | `--list` | Print values for all supported metadata fields; no mappings are applied. |
-| `--csv PATH` | Mapping CSV path. Defaults to `people3.txt` beside the script. |
+| `--mappings PATH` | Mapping CSV path. Defaults to `mappings.txt` beside the script. `--csv` is an alias. |
 | `--view true\|false` | Show per-tag old/new values after a successful change. Defaults to `false`; the changed file path is still printed. |
 | `-h`, `--help` | Show command help. |
 
@@ -93,11 +93,11 @@ A progress display reports metadata scanning and folder processing. The script c
 Preview a limited run and show the details that would change:
 
 ```sh
-./replace_region_names.py --folder . --top 10 --dry-run
+./replace_region_names.py --folder . --mappings people3.txt --top 10 --dry-run
 ```
 
 Apply changes in place and print each field's old and new values:
 
 ```sh
-./replace_region_names.py --folder "/path/to/photos" --view true
+./replace_region_names.py --folder "/path/to/photos" --mappings people3.txt --view true
 ```

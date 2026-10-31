@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replace mapped person names in photo metadata using people3.txt."""
+"""Replace mapped person names in photo metadata using mappings.txt."""
 
 import argparse
 import csv
@@ -172,7 +172,7 @@ def copy_target(source):
 def main():
     script_folder = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(
-        description='Replace mapped names in photo regions, keywords, subjects, and digiKam tag metadata using people3.txt.'
+        description='Replace mapped names in photo regions, keywords, subjects, and digiKam tag metadata using mappings.txt.'
     )
     parser.add_argument('--folder', type=Path, required=True, metavar='PATH',
                         help='root folder to scan recursively')
@@ -186,8 +186,9 @@ def main():
                         help='show per-tag change details after each file (default: false)')
     parser.add_argument('--list', action='store_true', dest='list_names',
                         help='list values for every supported metadata field without changing files')
-    parser.add_argument('--csv', type=Path, default=script_folder / 'people3.txt',
-                        help='mapping CSV (default: people3.txt beside this script)')
+    parser.add_argument('--mappings', '--csv', dest='mappings', type=Path,
+                        default=script_folder / 'mappings.txt',
+                        help='mapping CSV (default: mappings.txt beside this script)')
     args = parser.parse_args()
     folder = args.folder.expanduser().resolve()
     if not folder.is_dir():
@@ -199,7 +200,7 @@ def main():
         mappings = []
     else:
         try:
-            mappings = load_mappings(args.csv)
+            mappings = load_mappings(args.mappings)
         except (OSError, ValueError, csv.Error) as error:
             print(f'Error reading mappings: {error}', file=sys.stderr)
             return 2
@@ -207,7 +208,7 @@ def main():
         print('Error: exiftool was not found in PATH.', file=sys.stderr)
         return 2
 
-    mapping_file = args.csv.resolve()
+    mapping_file = args.mappings.resolve()
     script_file = Path(__file__).resolve()
 
     def files_in(directory, filenames):
@@ -233,7 +234,7 @@ def main():
     default_write_mode = not args.dry_run and args.top is None and not args.copy and not args.list_names
     if default_write_mode:
         print('No operation options were provided. Planned action:')
-        print(f'  Read mappings from {args.csv}.')
+        print(f'  Read mappings from {args.mappings}.')
         print(f'  Search {total_files} files under {folder} for matching names in the supported metadata fields.')
         print('  Update every matching original file in place; no copies or backups will be made.')
         try:
