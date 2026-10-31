@@ -13,11 +13,11 @@ A Python command-line script for applying name mappings to photo metadata and XM
 Clone the repository, then create your personal mapping file from the sample:
 
 ```sh
-cp mappings.txt people3.txt
-$EDITOR people3.txt
+cp mappings.txt newnames.txt
+$EDITOR newnames.txt
 ```
 
-`people3.txt` is ignored by Git because it is intended to contain your own names and mappings. Pass it explicitly with `--mappings people3.txt`; when no mapping path is supplied, the script uses the tracked `mappings.txt` sample.
+`newnames.txt` is ignored by Git because it is intended to contain your own names and mappings. Pass it explicitly with `--mappings newnames.txt`; when no mapping path is supplied, the script uses the tracked `mappings.txt` sample.
 
 ## Mapping file format
 
@@ -43,22 +43,22 @@ Matching is literal and case-sensitive. Keep mappings specific enough to avoid c
 
 ## Usage
 
-The `--folder` argument is required and is scanned recursively. First preview changes with `--dry-run`. To use your private mappings file, pass `--mappings people3.txt`; omitting that option uses `mappings.txt`:
+The `--folder` argument is required and is scanned recursively. First preview changes with `--dry-run`. To use your private mappings file, pass `--mappings newnames.txt`; omitting that option uses `mappings.txt`:
 
 ```sh
-./replace_region_names.py --folder "/path/to/photos" --mappings people3.txt --dry-run
+./replace_region_names.py --folder "/path/to/photos" --mappings newnames.txt --dry-run
 ```
 
 Apply the mappings to original files in place (the script asks for confirmation when no operation option is supplied):
 
 ```sh
-./replace_region_names.py --folder "/path/to/photos" --mappings people3.txt
+./replace_region_names.py --folder "/path/to/photos" --mappings newnames.txt
 ```
 
 Create renamed copies and leave originals in place:
 
 ```sh
-./replace_region_names.py --folder "/path/to/photos" --mappings people3.txt --copy
+./replace_region_names.py --folder "/path/to/photos" --mappings newnames.txt --copy
 ```
 
 List every supported metadata field and its values without changing files:
@@ -86,7 +86,7 @@ Try the mapping on a small folder first. The commands below limit the copy run t
 2. Create changed copies and print the old and new values. The originals remain unchanged:
 
    ```sh
-   ./replace_region_names.py --folder "/path/to/test-photos" --mappings ./people3.txt --copy --top 10 --view true
+   ./replace_region_names.py --folder "/path/to/test-photos" --mappings ./newnames.txt --copy --top 10 --view true
    ```
 
 3. Change to the test photo folder, then compare an original image with its `.regionname` copy:
@@ -107,7 +107,7 @@ Try the mapping on a small folder first. The commands below limit the copy run t
 4. When the copied files look right, run without `--copy` to update originals. This asks for confirmation before writing:
 
    ```sh
-   ./replace_region_names.py --folder "/path/to/photos" --mappings ./people3.txt --view true
+   ./replace_region_names.py --folder "/path/to/photos" --mappings ./newnames.txt --view true
    ```
 
    Existing `.regionname` outputs are skipped by `--copy`, so use a fresh test folder or remove old test copies before repeating the copy step.
@@ -132,11 +132,11 @@ A progress display reports metadata scanning and folder processing. The script c
 Preview a limited run and show the details that would change:
 
 ```sh
-./replace_region_names.py --folder . --mappings people3.txt --top 10 --dry-run
+./replace_region_names.py --folder . --mappings newnames.txt --top 10 --dry-run
 ```
 
 Apply changes in place and print each field's old and new values:
 
 ```sh
-./replace_region_names.py --folder "/path/to/photos" --mappings people3.txt --view true
+./replace_region_names.py --folder "/path/to/photos" --mappings newnames.txt --view true
 ```

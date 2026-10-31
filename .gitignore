@@ -4,3 +4,4 @@ people3.txt
 # Python cache files.
 __pycache__/
 *.py[cod]
+newnames.txt
