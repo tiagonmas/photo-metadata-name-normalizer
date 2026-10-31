@@ -1,0 +1,6 @@
+# Personal name mappings; keep your local file out of version control.
+people3.txt
+
+# Python cache files.
+__pycache__/
+*.py[cod]
